@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Risolutore Cubo Rubik AI</title>
+    <style>
+        :root {
+            --bg-color: #222;
+            --text-color: white;
+            --accent-blue: #007bff;
+            --accent-green: #28a745;
+            --accent-red: #dc3545;
+            --panel-bg: #333;
+        }
+        body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: var(--bg-color); color: var(--text-color); text-align: center; margin: 0; padding: 20px; }
+        h1 { margin-bottom: 10px; }
+        
+        .main-container { display: flex; flex-wrap: wrap; justify-content: center; gap: 25px; margin-top: 20px; max-width: 1200px; margin-left: auto; margin-right: auto; }
+        
+        /* Sezione Video Sinistra */
+        .video-section { flex: 1 1 600px; display: flex; flex-direction: column; align-items: center; }
+        .video-box { border: 4px solid #555; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 100%; max-width: 640px; height: auto; }
+        
+        /* Box Consigli Luce */
+        .tip-box {
+            background: #fff3cd; color: #856404; border-left: 5px solid #ffeeba;
+            padding: 15px; margin-top: 15px; border-radius: 8px; text-align: left; font-size: 0.9rem;
+            max-width: 640px; width: 100%; box-sizing: border-box;
+        }
+        .tip-box strong { display: block; margin-bottom: 5px; font-size: 1rem; }
+
+        /* Sezione Controlli Destra */
+        .controls-section { flex: 0 1 400px; background: var(--panel-bg); padding: 25px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); text-align: left; display: flex; flex-direction: column; }
+        
+        /* Diagramma Cubo Aperto (Net) */
+        .cube-net-container { text-align: center; margin-bottom: 20px; }
+        .cube-net-title { font-size: 1rem; margin-bottom: 10px; color: #ccc; }
+        .cube-net {
+            display: grid;
+            grid-template-columns: repeat(4, 50px);
+            grid-template-rows: repeat(3, 50px);
+            gap: 4px;
+            justify-content: center;
+            margin: 0 auto;
+            width: fit-content;
+        }
+        .net-face {
+            width: 50px; height: 50px;
+            background: #444; border: 2px solid #222;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: bold; color: #777; border-radius: 4px; transition: all 0.3s ease;
+        }
+        /* Posizionamento nella griglia */
+        .face-U { grid-column: 2; grid-row: 1; } /* Up */
+        .face-L { grid-column: 1; grid-row: 2; } /* Left */
+        .face-F { grid-column: 2; grid-row: 2; } /* Front */
+        .face-R { grid-column: 3; grid-row: 2; } /* Right */
+        .face-B { grid-column: 4; grid-row: 2; } /* Back */
+        .face-D { grid-column: 2; grid-row: 3; } /* Down */
+
+        /* Stati del diagramma */
+        .net-face.active {
+            background: var(--accent-blue); color: white; border-color: #80bdff;
+            box-shadow: 0 0 15px var(--accent-blue); transform: scale(1.1); z-index: 2;
+        }
+        .net-face.scanned { background: var(--accent-green); color: white; border-color: #218838; }
+
+        /* Istruzioni Dinamiche */
+        #dynamic-instructions {
+            font-size: 1.1rem; margin-bottom: 20px; padding: 15px;
+            background: rgba(0, 123, 255, 0.1); border-left: 4px solid var(--accent-blue); border-radius: 4px;
+            min-height: 60px; display: flex; align-items: center;
+        }
+        #dynamic-instructions b { color: var(--accent-blue); margin-right: 5px; font-size: 1.2rem; }
+
+        /* Bottoni */
+        .btn-group { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+        button { padding: 12px 20px; font-size: 18px; cursor: pointer; background: var(--accent-blue); color: white; border: none; border-radius: 8px; transition: background 0.2s; font-weight: bold; }
+        button:hover { filter: brightness(110%); }
+        button:active { transform: scale(0.98); }
+        button.solve { background: var(--accent-green); display: none; } /* Nascosto finché non serve */
+        button.reset { background: var(--accent-red); margin-top: auto; }
+
+        /* Log e Soluzione */
+        #log { background: #222; padding: 10px; border-radius: 8px; height: 150px; overflow-y: auto; font-family: monospace; font-size: 0.9rem; border: 1px solid #444; }
+        .solution-box { background: white; color: black; padding: 20px; margin-top: 30px; font-size: 1.5rem; font-weight: bold; border-radius: 12px; border-left: 10px solid var(--accent-green); box-shadow: 0 5px 20px rgba(0,0,0,0.3); max-width: 800px; margin-left: auto; margin-right: auto; }
+    </style>
+</head>
+<body>
+
+    <h1>📷 Risolutore Cubo di Rubik AI</h1>
+
+    <div class="main-container">
+        <div class="video-section">
+            <img src="{{ url_for('video_feed') }}" class="video-box" alt="Flusso Video Webcam">
+            
+            <div class="tip-box">
+                <strong>💡 Consigli per una scansione perfetta:</strong>
+                <ul>
+                    <li><strong>Luce:</strong> Usa una luce bianca e forte (es. luce naturale o lampada LED). Evita luci gialle calde.</li>
+                    <li><strong>Riflessi:</strong> Evita riflessi diretti sulla plastica degli adesivi. Inclina leggermente il cubo se necessario.</li>
+                    <li><strong>Posizione:</strong> Centra i 9 quadratini esattamente dentro la griglia verde a schermo.</li>
+                    <li>Se il primo colore viene sbagliato, usa RESET e prova a migliorare la luce.</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="controls-section">
+            
+            <div class="cube-net-container">
+                <div class="cube-net-title">Orientamento Facce (Guida Visiva)</div>
+                <div class="cube-net">
+                    <div id="net-U" class="net-face face-U active">U</div>
+                    <div id="net-L" class="net-face face-L">L</div>
+                    <div id="net-F" class="net-face face-F">F</div>
+                    <div id="net-R" class="net-face face-R">R</div>
+                    <div id="net-B" class="net-face face-B">B</div>
+                    <div id="net-D" class="net-face face-D">D</div>
+                </div>
+            </div>
+
+            <div id="dynamic-instructions">
+                Inizializzazione...
+            </div>
+            
+            <div class="btn-group">
+                <button id="scanBtn" onclick="scanFace()">📸 SCANSIONA FACCIA CORRENTE</button>
+                <button id="solveBtn" onclick="solveCube()" class="solve">🧠 CALCOLA SOLUZIONE</button>
+                <button onclick="resetCube()" class="reset">🔄 RESET TOTALE</button>
+            </div>
+
+            <h4>Log Operazioni:</h4>
+            <div id="log">Pronto. Inizia la scansione.</div>
+        </div>
+    </div>
+
+    <div id="solutionDisplay" class="solution-box" style="display:none;"></div>
+
+    <script>
+        // Ordine delle facce come definito nel backend Python
+        const facesOrder = ['Up', 'Right', 'Front', 'Down', 'Left', 'Back'];
+        // Mappa per gli ID dell'HTML net-face
+        const faceIds = {'Up': 'net-U', 'Right': 'net-R', 'Front': 'net-F', 'Down': 'net-D', 'Left': 'net-L', 'Back': 'net-B'};
+
+        // Istruzioni specifiche per aiutare l'orientamento
+        // NOTA: Queste istruzioni cercano di mantenere un punto di riferimento (es. la faccia iniziale in alto) per facilitare l'utente.
+        const instructions = [
+            "<b>1. UP (Sopra):</b> Scegli una faccia per iniziare (es. BIANCA) e tienila rivolta verso l'ALTO. Scansiona.",
+            "<b>2. RIGHT (Destra):</b> Mantieni la prima faccia (es. BIANCA) in ALTO. Ruota l'intero cubo verso sinistra per mostrare la faccia a DESTRA.",
+            "<b>3. FRONT (Fronte):</b> Mantieni la prima faccia in ALTO. Ruota il cubo per mostrare la faccia che ora è DAVANTI a te.",
+            "<b>4. DOWN (Sotto):</b> CAPOVOLGI completamente il cubo sottosopra. La faccia opposta alla prima ora deve essere in ALTO.",
+            "<b>5. LEFT (Sinistra):</b> (Con il cubo ancora capovolto) Ruota per mostrare la faccia a SINISTRA.",
+            "<b>6. BACK (Dietro):</b> (Con il cubo ancora capovolto) Ruota per mostrare l'ultima faccia rimasta sul RETRO."
+        ];
+
+        let currentStepIndex = 0;
+
+        // Inizializza la UI al caricamento
+        window.onload = function() {
+            updateUIForStep(0);
+        };
+
+        function updateUIForStep(index) {
+            currentStepIndex = index;
+            
+            // 1. Aggiorna il testo delle istruzioni
+            const instrDiv = document.getElementById('dynamic-instructions');
+            if (index < instructions.length) {
+                instrDiv.innerHTML = instructions[index];
+                document.getElementById('scanBtn').style.display = 'block';
+                document.getElementById('solveBtn').style.display = 'none';
+            } else {
+                instrDiv.innerHTML = "<b>✅ Scansione Completa!</b><br>Premi 'Calcola Soluzione' per procedere.";
+                document.getElementById('scanBtn').style.display = 'none';
+                document.getElementById('solveBtn').style.display = 'block';
+            }
+
+            // 2. Aggiorna il diagramma visivo (Net Diagram)
+            // Resetta tutte le classi active
+            document.querySelectorAll('.net-face').forEach(el => el.classList.remove('active'));
+            
+            if (index < facesOrder.length) {
+                const currentFaceName = facesOrder[index];
+                const currentNetId = faceIds[currentFaceName];
+                // Attiva la faccia corrente
+                document.getElementById(currentNetId).classList.add('active');
+            }
+        }
+
+        function markFaceAsScanned(faceName) {
+            const netId = faceIds[faceName];
+            document.getElementById(netId).classList.remove('active');
+            document.getElementById(netId).classList.add('scanned');
+        }
+
+        function log(msg) {
+            const logDiv = document.getElementById('log');
+            logDiv.innerHTML += "<div>" + msg + "</div>";
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function scanFace() {
+            const btn = document.getElementById('scanBtn');
+            btn.disabled = true; btn.innerText = "Acquisizione...";
+
+            fetch('/scan_face', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                btn.disabled = false; btn.innerText = "📸 SCANSIONA FACCIA CORRENTE";
+                if(data.status === 'ok') {
+                    log("✅ " + data.face + " OK: " + data.colors.join(''));
+                    // Marca la faccia vecchia come fatta nel diagramma
+                    markFaceAsScanned(data.face);
+                    // Prepara la UI per il prossimo step
+                    updateUIForStep(data.next_index);
+                } else if(data.status === 'complete') {
+                    log("⚠️ Scansione già completata.");
+                    updateUIForStep(6);
+                } else {
+                    log("❌ Errore nella scansione.");
+                }
+            })
+            .catch(err => {
+                 btn.disabled = false; btn.innerText = "📸 SCANSIONA FACCIA CORRENTE";
+                 log("❌ Errore di connessione al server.");
+            });
+        }
+
+        function solveCube() {
+            const btn = document.getElementById('solveBtn');
+            btn.disabled = true; btn.innerHTML = "⏳ Elaborazione in corso...";
+            log("⏳ Richiesta soluzione all'IA...");
+
+            fetch('/solve', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                btn.disabled = false; btn.innerHTML = "🧠 CALCOLA SOLUZIONE";
+                if(data.status === 'solved') {
+                    let sol = data.solution;
+                    const solDisplay = document.getElementById('solutionDisplay');
+                    solDisplay.style.display = 'block';
+                    // Formatta la soluzione per renderla più leggibile (aggiunge spazi extra tra le mosse)
+                    solDisplay.innerText = "MOSSE DA ESEGUIRE: \n" + sol.split(' ').join('  ');
+                    log("🎉 SOLUZIONE TROVATA!");
+                    // Scorri la pagina verso la soluzione
+                    solDisplay.scrollIntoView({behavior: "smooth"});
+                } else {
+                    log("❌ Errore Kociemba: " + data.msg);
+                    alert("Errore dall'algoritmo:\n" + data.msg + "\n\nProbabilmente alcuni colori sono stati letti male a causa della luce. Premi RESET e riprova con luce migliore.");
+                }
+            });
+        }
+
+        function resetCube() {
+            if(!confirm("Sei sicuro di voler ricominciare la scansione da capo?")) return;
+
+            fetch('/reset', { method: 'POST' })
+            .then(() => {
+                log("🔄 Reset effettuato.");
+                document.getElementById('solutionDisplay').style.display = 'none';
+                
+                // Resetta il diagramma visivo
+                document.querySelectorAll('.net-face').forEach(el => {
+                    el.classList.remove('scanned', 'active');
+                });
+                
+                // Ricomincia dallo step 0
+                updateUIForStep(0);
+            });
+        }
+    </script>
+</body>
+</html>
