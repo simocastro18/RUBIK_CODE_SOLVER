@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Risolutore Cubo Rubik AI</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@800&display=swap" rel="stylesheet">
+    
     <style>
         :root {
             --bg-color: #222;
@@ -14,45 +16,71 @@
             --accent-yellow: #ffc107;
             --panel-bg: #333;
         }
-        body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: var(--bg-color); color: var(--text-color); text-align: center; margin: 0; padding: 20px; }
-        h1 { margin-bottom: 10px; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg-color); color: var(--text-color); text-align: center; margin: 0; padding: 20px; }
         
         .main-container { display: flex; flex-wrap: wrap; justify-content: center; gap: 25px; margin-top: 20px; max-width: 1200px; margin-left: auto; margin-right: auto; }
         
-        /* Sezione Video Sinistra */
+        /* --- STILE BARRA CAMBIA CAM --- */
+        .camera-controls {
+            background: #444; padding: 10px 20px; border-radius: 8px; margin-bottom: 10px;
+            display: flex; align-items: center; justify-content: center; gap: 10px;
+        }
+        select { padding: 8px; border-radius: 4px; font-weight: bold; }
+        .cam-btn { padding: 8px 15px; cursor: pointer; background: #666; color: white; border: none; border-radius: 4px; }
+        .cam-btn:hover { background: #888; }
+
+        /* --- STILE VIDEO CON OVERLAY --- */
         .video-section { flex: 1 1 600px; display: flex; flex-direction: column; align-items: center; }
         
-        /* FIX WEBCAM SCHIACCIATA: width 100% e height auto mantiene le proporzioni originali */
-        .video-box { 
-            border: 4px solid #555; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); 
-            width: 100%; max-width: 640px; height: auto; display: block;
+        .video-wrapper {
+            position: relative; /* Necessario per posizionare la scritta sopra */
+            width: 100%; max-width: 640px;
+            border: 4px solid #555; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            overflow: hidden;
         }
-        
+
+        .video-box { 
+            width: 100%; height: auto; display: block;
+        }
+
+        /* IL FONT GIALLO BELLO */
+        #video-overlay-text {
+            position: absolute;
+            top: 20px; left: 0; right: 0; /* Centrato */
+            text-align: center;
+            font-family: 'Montserrat', sans-serif; /* Font figo */
+            font-size: 2rem;
+            color: #FFD700; /* Oro/Giallo */
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            /* Bordo nero attorno al testo per leggibilità */
+            text-shadow: 
+                3px 3px 0 #000,
+                -1px -1px 0 #000,  
+                1px -1px 0 #000,
+                -1px 1px 0 #000,
+                1px 1px 0 #000;
+            pointer-events: none; /* Clicca attraverso il testo */
+            z-index: 10;
+        }
+
         .tip-box {
             background: #fff3cd; color: #856404; border-left: 5px solid #ffeeba;
             padding: 15px; margin-top: 15px; border-radius: 8px; text-align: left; font-size: 0.9rem;
             max-width: 640px; width: 100%; box-sizing: border-box;
         }
-        .tip-box strong { display: block; margin-bottom: 5px; font-size: 1rem; }
 
         /* Sezione Controlli Destra */
         .controls-section { flex: 0 1 400px; background: var(--panel-bg); padding: 25px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); text-align: left; display: flex; flex-direction: column; }
         
-        /* Diagramma Cubo Aperto (Net) */
+        /* Diagramma Cubo */
         .cube-net-container { text-align: center; margin-bottom: 20px; }
-        .cube-net-title { font-size: 1rem; margin-bottom: 10px; color: #ccc; }
         .cube-net {
-            display: grid;
-            grid-template-columns: repeat(4, 50px);
-            grid-template-rows: repeat(3, 50px);
-            gap: 4px;
-            justify-content: center;
-            margin: 0 auto;
-            width: fit-content;
+            display: grid; grid-template-columns: repeat(4, 50px); grid-template-rows: repeat(3, 50px);
+            gap: 4px; justify-content: center; margin: 0 auto; width: fit-content;
         }
         .net-face {
-            width: 50px; height: 50px;
-            background: #444; border: 2px solid #222;
+            width: 50px; height: 50px; background: #444; border: 2px solid #222;
             display: flex; align-items: center; justify-content: center;
             font-weight: bold; color: #777; border-radius: 4px; transition: all 0.3s ease;
         }
@@ -63,30 +91,17 @@
         .face-B { grid-column: 4; grid-row: 2; } 
         .face-D { grid-column: 2; grid-row: 3; } 
 
-        .net-face.active {
-            background: var(--accent-blue); color: white; border-color: #80bdff;
-            box-shadow: 0 0 15px var(--accent-blue); transform: scale(1.1); z-index: 2;
-        }
+        .net-face.active { background: var(--accent-blue); color: white; border-color: #80bdff; transform: scale(1.1); z-index: 2; }
         .net-face.scanned { background: var(--accent-green); color: white; border-color: #218838; }
-
-        /* Istruzioni Dinamiche */
-        #dynamic-instructions {
-            font-size: 1.1rem; margin-bottom: 20px; padding: 15px;
-            background: rgba(0, 123, 255, 0.1); border-left: 4px solid var(--accent-blue); border-radius: 4px;
-            min-height: 60px; display: flex; align-items: center;
-        }
-        #dynamic-instructions b { color: var(--accent-blue); margin-right: 5px; font-size: 1.2rem; }
 
         /* Bottoni */
         .btn-group { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
         button { padding: 12px 20px; font-size: 18px; cursor: pointer; background: var(--accent-blue); color: white; border: none; border-radius: 8px; transition: background 0.2s; font-weight: bold; }
         button:hover { filter: brightness(110%); }
-        button:active { transform: scale(0.98); }
         button.solve { background: var(--accent-green); display: none; } 
-        button.undo { background: var(--accent-yellow); color: #333; display: none; } /* Tasto Annulla */
+        button.undo { background: var(--accent-yellow); color: #333; display: none; }
         button.reset { background: var(--accent-red); margin-top: auto; }
 
-        /* Log e Soluzione */
         #log { background: #222; padding: 10px; border-radius: 8px; height: 150px; overflow-y: auto; font-family: monospace; font-size: 0.9rem; border: 1px solid #444; }
     </style>
 </head>
@@ -96,21 +111,34 @@
 
     <div class="main-container">
         <div class="video-section">
-            <img src="{{ url_for('video_feed') }}" class="video-box" alt="Flusso Video Webcam">
+            
+            <div class="camera-controls">
+                <label>Sorgente Webcam:</label>
+                <select id="camSelector">
+                    <option value="0">Camera 0 (PC)</option>
+                    <option value="1">Camera 1 (Telefono/USB)</option>
+                    <option value="2">Camera 2 (Altro)</option>
+                </select>
+                <button class="cam-btn" onclick="changeCamera()">Applica</button>
+            </div>
+
+            <div class="video-wrapper">
+                <img id="videoStream" src="{{ url_for('video_feed') }}" class="video-box" alt="Flusso Video">
+                
+                <div id="video-overlay-text">MOSTRA: UP (SOPRA)</div>
+            </div>
             
             <div class="tip-box">
                 <strong>💡 Consigli:</strong>
                 <ul>
-                    <li>Usa la torcia del telefono se puoi.</li>
-                    <li>Centra i quadratini nella griglia.</li>
-                    <li>Se sbagli, usa "Annulla Ultima" invece di ricominciare tutto.</li>
+                    <li>Se usi il telefono (Iriun), seleziona "Camera 1".</li>
+                    <li>Usa la torcia per colori perfetti.</li>
                 </ul>
             </div>
         </div>
 
         <div class="controls-section">
             <div class="cube-net-container">
-                <div class="cube-net-title">Stato Scansione</div>
                 <div class="cube-net">
                     <div id="net-U" class="net-face face-U active">U</div>
                     <div id="net-L" class="net-face face-L">L</div>
@@ -121,11 +149,9 @@
                 </div>
             </div>
 
-            <div id="dynamic-instructions">Inizializzazione...</div>
-            
             <div class="btn-group">
-                <button id="scanBtn" onclick="scanFace()">📸 SCANSIONA FACCIA CORRENTE</button>
-                <button id="undoBtn" onclick="undoLastFace()" class="undo">↩️ ANNULLA ULTIMA FACCIA</button>
+                <button id="scanBtn" onclick="scanFace()">📸 SCANSIONA FACCIA</button>
+                <button id="undoBtn" onclick="undoLastFace()" class="undo">↩️ ANNULLA ULTIMA</button>
                 <button id="solveBtn" onclick="solveCube()" class="solve">🧠 CALCOLA SOLUZIONE</button>
                 <button onclick="resetCube()" class="reset">🗑️ RESET TOTALE</button>
             </div>
@@ -137,43 +163,62 @@
 
     <script>
         const facesOrder = ['Up', 'Right', 'Front', 'Down', 'Left', 'Back'];
+        const facesLabel = ['UP (SOPRA)', 'RIGHT (DESTRA)', 'FRONT (FRONTE)', 'DOWN (SOTTO)', 'LEFT (SINISTRA)', 'BACK (DIETRO)'];
         const faceIds = {'Up': 'net-U', 'Right': 'net-R', 'Front': 'net-F', 'Down': 'net-D', 'Left': 'net-L', 'Back': 'net-B'};
-        const instructions = [
-            "<b>1. UP (Sopra):</b> Faccia in ALTO.",
-            "<b>2. RIGHT (Destra):</b> Ruota il cubo a SINISTRA.",
-            "<b>3. FRONT (Fronte):</b> Ruota il cubo a SINISTRA.",
-            "<b>4. DOWN (Sotto):</b> CAPOVOLGI il cubo.",
-            "<b>5. LEFT (Sinistra):</b> Ruota il cubo a SINISTRA.",
-            "<b>6. BACK (Dietro):</b> Ruota il cubo a SINISTRA."
-        ];
 
         let currentStepIndex = 0;
 
-        window.onload = function() { updateUIForStep(0); };
+        // Funzione per cambiare webcam
+        function changeCamera() {
+            const selector = document.getElementById('camSelector');
+            const newId = selector.value;
+            const img = document.getElementById('videoStream');
+            
+            // Effetto caricamento
+            img.style.opacity = 0.5;
+            
+            // Chiamata al server
+            const formData = new FormData();
+            formData.append('camera_id', newId);
+
+            fetch('/change_camera', { method: 'POST', body: formData })
+            .then(r => r.json())
+            .then(data => {
+                if(data.status === 'ok') {
+                    log("📷 Cambio camera: " + newId);
+                    // Ricarica immagine video (aggiungo timestamp per evitare cache)
+                    img.src = "{{ url_for('video_feed') }}?t=" + new Date().getTime();
+                    img.style.opacity = 1;
+                } else {
+                    alert("Errore: " + data.msg);
+                    img.style.opacity = 1;
+                }
+            });
+        }
 
         function updateUIForStep(index) {
             currentStepIndex = index;
-            
-            // Testo Istruzioni
-            const instrDiv = document.getElementById('dynamic-instructions');
-            if (index < instructions.length) {
-                instrDiv.innerHTML = instructions[index];
+            const overlay = document.getElementById('video-overlay-text');
+
+            if (index < facesOrder.length) {
+                // AGGIORNA LA SCRITTA SUL VIDEO
+                overlay.innerText = "MOSTRA: " + facesLabel[index];
+                overlay.style.color = "#FFD700"; // Giallo
+                
                 document.getElementById('scanBtn').style.display = 'block';
                 document.getElementById('solveBtn').style.display = 'none';
             } else {
-                instrDiv.innerHTML = "<b>✅ Scansione Completa!</b>";
+                overlay.innerText = "SCANSIONE COMPLETA!";
+                overlay.style.color = "#28a745"; // Verde
+                
                 document.getElementById('scanBtn').style.display = 'none';
                 document.getElementById('solveBtn').style.display = 'block';
             }
 
-            // Gestione Tasto Annulla (non mostrarlo se siamo all'inizio)
-            if (index > 0) {
-                document.getElementById('undoBtn').style.display = 'block';
-            } else {
-                document.getElementById('undoBtn').style.display = 'none';
-            }
+            // Tasto annulla
+            document.getElementById('undoBtn').style.display = index > 0 ? 'block' : 'none';
 
-            // Aggiorna Diagramma Visivo
+            // Diagramma
             document.querySelectorAll('.net-face').forEach(el => el.classList.remove('active'));
             if (index < facesOrder.length) {
                 const currentNetId = faceIds[facesOrder[index]];
@@ -205,7 +250,7 @@
             fetch('/scan_face', { method: 'POST' })
             .then(response => response.json())
             .then(data => {
-                btn.disabled = false; btn.innerText = "📸 SCANSIONA FACCIA CORRENTE";
+                btn.disabled = false; btn.innerText = "📸 SCANSIONA FACCIA";
                 if(data.status === 'ok') {
                     log("✅ " + data.face + " presa.");
                     markFaceAsScanned(data.face);
@@ -213,8 +258,7 @@
                 } else if(data.status === 'error') {
                     log("❌ " + data.msg);
                 }
-            })
-            .catch(() => { btn.disabled = false; log("❌ Errore Server"); });
+            });
         }
 
         function undoLastFace() {
@@ -223,15 +267,13 @@
             .then(data => {
                 if(data.status === 'ok') {
                     log("↩️ Annullata: " + data.face_removed);
-                    unmarkFace(data.face_removed); // Rimuovi il verde
-                    updateUIForStep(data.new_index); // Torna indietro
-                } else {
-                    log("⚠️ Impossibile annullare.");
+                    unmarkFace(data.face_removed);
+                    updateUIForStep(data.new_index);
                 }
             });
         }
 
-function solveCube() {
+        function solveCube() {
             const btn = document.getElementById('solveBtn');
             btn.disabled = true; btn.innerHTML = "⏳ Elaborazione...";
             
@@ -240,19 +282,15 @@ function solveCube() {
             .then(data => {
                 btn.disabled = false; btn.innerHTML = "🧠 CALCOLA SOLUZIONE";
                 if(data.status === 'solved') {
-                    // Costruiamo i parametri URL con mosse E colori
                     const params = new URLSearchParams();
                     params.append('moves', data.solution);
-                    
-                    // Aggiungiamo i colori dei centri (es. u=Y, f=R...)
+                    // Passa i colori
                     params.append('u', data.face_colors.U);
                     params.append('d', data.face_colors.D);
                     params.append('f', data.face_colors.F);
                     params.append('b', data.face_colors.B);
                     params.append('r', data.face_colors.R);
                     params.append('l', data.face_colors.L);
-
-                    // Reindirizza
                     window.location.href = "/solution_view?" + params.toString();
                 } else {
                     log("❌ Errore: " + data.msg);
@@ -260,15 +298,18 @@ function solveCube() {
                 }
             });
         }
-    
+
         function resetCube() {
-            if(!confirm("Vuoi resettare TUTTO da capo?")) return;
+            if(!confirm("Resettare tutto?")) return;
             fetch('/reset', { method: 'POST' }).then(() => {
-                log("🗑️ Reset Totale.");
+                log("🗑️ Reset.");
                 document.querySelectorAll('.net-face').forEach(el => el.classList.remove('scanned', 'active'));
                 updateUIForStep(0);
             });
         }
+
+        // Avvio
+        updateUIForStep(0);
     </script>
 </body>
 </html>

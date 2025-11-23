@@ -1,9 +1,5 @@
 # RUBIK_CODE_SOLVER
 
-![Python](https://img.shields.io/badge/Python-3.x-blue)
-![Kociemba](https://img.shields.io/badge/Algorithm-Kociemba-orange)
-![Status](https://img.shields.io/badge/Status-Active-success)
-
 Un risolutore automatico per il Cubo di Rubik con interfaccia web, basato sull’algoritmo Kociemba tramite la libreria Python *kociemba*.
 
 ## Descrizione
