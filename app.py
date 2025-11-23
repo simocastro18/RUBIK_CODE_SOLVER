@@ -6,7 +6,7 @@ from flask import Flask, render_template, Response, jsonify
 app = Flask(__name__)
 
 # --- CONFIGURAZIONE ---
-camera = cv2.VideoCapture(0) # 0 è solitamente la webcam integrata
+camera = cv2.VideoCapture(1) # 0 è solitamente la webcam integrata
 
 # Stato globale del cubo
 # Ordine standard Kociemba: U, R, F, D, L, B
@@ -182,53 +182,85 @@ def solve():
         return jsonify({'status': 'error', 'msg': 'Scansiona prima tutte le facce!'})
 
     try:
-        # 1. COSTRUISCI LA MAPPA DEI COLORI BASATA SUI CENTRI
-        # L'algoritmo deve sapere: "Il colore del centro UP corrisponde a 'U'"
-        # Esempio: Se il centro della faccia UP è Giallo (Y), allora Y = U.
-        
-        center_map = {}
-        
-        # L'ordine delle facce in cube_state deve essere quello standard: U, R, F, D, L, B
-        # Le chiavi sono: 'Up', 'Right', 'Front', 'Down', 'Left', 'Back'
-        
-        # Mappiamo il colore del centro (indice 4) di ogni faccia alla notazione Kociemba
-        center_map[cube_state['Up'][4]]    = 'U'
-        center_map[cube_state['Right'][4]] = 'R'
-        center_map[cube_state['Front'][4]] = 'F'
-        center_map[cube_state['Down'][4]]  = 'D'
-        center_map[cube_state['Left'][4]]  = 'L'
-        center_map[cube_state['Back'][4]]  = 'B'
+        # 1. Recupera i colori dei centri scansionati
+        # Indice 4 è sempre il centro di una griglia 3x3 (0-8)
+        centers = {
+            'U': cube_state['Up'][4],
+            'R': cube_state['Right'][4],
+            'F': cube_state['Front'][4],
+            'D': cube_state['Down'][4],
+            'L': cube_state['Left'][4],
+            'B': cube_state['Back'][4]
+        }
 
-        # Verifica: abbiamo trovato 6 colori unici per i 6 centri?
-        if len(center_map) < 6:
-             return jsonify({'status': 'error', 'msg': 'Errore Centri: Hai scansionato due facce con lo stesso colore centrale! Riprova.'})
+        # 2. Verifica univocità centri
+        unique_centers = set(centers.values())
+        if len(unique_centers) < 6:
+             return jsonify({'status': 'error', 'msg': 'Errore: Hai scansionato facce con lo stesso centro due volte!'})
 
-        # 2. TRADUCI TUTTA LA STRINGA
+        # 3. Mappa per Kociemba (Traduzione Colore -> Posizione)
+        center_map_inv = {v: k for k, v in centers.items()} # Es: {'Y': 'U', 'R': 'F'...}
+
+        # 4. Costruisci stringa
         raw_string = ""
-        for face in faces_order: # Up, Right, Front, Down, Left, Back
+        for face in faces_order:
             raw_string += "".join(cube_state[face])
             
-        # Sostituisci ogni colore (es. 'Y') con la sua posizione (es. 'U')
         kociemba_string = ""
         for char in raw_string:
-            kociemba_string += center_map[char]
+            kociemba_string += center_map_inv[char]
             
-        print(f"Stringa tradotta per Kociemba: {kociemba_string}") # Debug nel terminale
+        print(f"Stringa Kociemba: {kociemba_string}")
 
-        # 3. RISOLVI
+        # 5. Risolvi
         solution = kociemba.solve(kociemba_string)
-        return jsonify({'status': 'solved', 'solution': solution})
+        
+        # RESTITUISCI SOLUZIONE + COLORI CENTRI
+        return jsonify({
+            'status': 'solved', 
+            'solution': solution,
+            'face_colors': centers # Passiamo al frontend che 'U' è 'Y', ecc.
+        })
         
     except Exception as e:
         print(e)
-        return jsonify({'status': 'error', 'msg': 'Errore: Cubo impossibile. Controlla di aver scansionato nell\'ordine corretto e che i colori siano giusti.'})
-
+        return jsonify({'status': 'error', 'msg': 'Errore algoritmo. Controlla i colori scansionati.'})
+    
 @app.route('/reset', methods=['POST'])
 def reset():
     global current_face_index, cube_state
     current_face_index = 0
     cube_state = {}
     return jsonify({'status': 'reset'})
+
+@app.route('/solution_view')
+def solution_view():
+    return render_template('solution.html')
+
+@app.route('/undo_last_face', methods=['POST'])
+def undo_last_face():
+    global current_face_index, cube_state
+    
+    # Se siamo all'inizio (0), non possiamo tornare indietro
+    if current_face_index > 0:
+        # Torniamo indietro di 1 nell'indice
+        current_face_index -= 1
+        
+        # Recuperiamo il nome della faccia che stiamo cancellando
+        face_to_remove = faces_order[current_face_index]
+        
+        # Cancelliamo i dati di quella faccia dalla memoria
+        if face_to_remove in cube_state:
+            del cube_state[face_to_remove]
+            
+        return jsonify({
+            'status': 'ok', 
+            'new_index': current_face_index, 
+            'face_removed': face_to_remove
+        })
+    
+    return jsonify({'status': 'error', 'msg': 'Nessuna faccia da annullare'})
+
 
 if __name__ == '__main__':
     app.run(debug=True)

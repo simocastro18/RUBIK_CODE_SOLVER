@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Guida Mosse 3D - Fixed View Corrected</title>
+    
+    <style>
+        body { margin: 0; background-color: #1a1a1a; color: white; font-family: sans-serif; overflow: hidden; }
+        
+        #main-container { display: flex; height: 100vh; }
+        
+        #controls-panel { width: 30%; background: #252525; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; z-index: 10; box-shadow: 5px 0 15px rgba(0,0,0,0.5); }
+        #canvas-container { width: 70%; height: 100%; background: radial-gradient(circle, #222 0%, #000 100%); position: relative; }
+        
+        h2 { margin-bottom: 5px; color: #ccc; font-size: 1rem; text-transform: uppercase; }
+        #step-counter { margin-top: 0; color: #fff; }
+
+        #move-display { font-size: 6rem; font-weight: 800; color: #007bff; margin: 20px 0; line-height: 1; text-shadow: 0 0 20px rgba(0,0,0,0.5); }
+        #status-text { color: #aaa; margin-bottom: 30px; font-size: 1.1rem; text-align: center; }
+
+        .btn-row { display: flex; gap: 15px; }
+        button { padding: 15px 30px; font-size: 1.2rem; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; }
+        button:hover { transform: scale(1.05); }
+        button:active { transform: scale(0.95); }
+        
+        #btn-prev { background: #555; color: white; }
+        #btn-next { background: #28a745; color: white; }
+        #btn-replay { background: #007bff; color: white; margin-top: 25px; width: 80%; }
+        #btn-home { background: transparent; border: 1px solid #666; color: #888; margin-top: 50px; font-size: 0.9rem; padding: 10px; }
+
+        .face-label {
+            position: absolute; color: rgba(255,255,255,0.8); font-weight: bold; font-family: monospace; pointer-events: none; font-size: 1.2rem; text-shadow: 2px 2px 2px black;
+        }
+
+        #fatal-error {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.95); color: #ff5555; z-index: 9999;
+            display: none; flex-direction: column; align-items: center; justify-content: center;
+            text-align: center; font-family: monospace; padding: 20px;
+        }
+    </style>
+
+    <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
+    <script src="https://unpkg.com/tween.js@18.6.4/src/Tween.js"></script>
+</head>
+<body>
+
+<div id="fatal-error">
+    <h1>⚠️ ERRORE</h1>
+    <p id="error-message">...</p>
+    <button onclick="window.location.href='/'" style="background:white; color:black; margin-top:20px;">HOME</button>
+</div>
+
+<div id="main-container">
+    <div id="controls-panel">
+        <h2>Tutorial Mosse</h2>
+        <h1 id="step-counter">Step 0 / 0</h1>
+        <div id="move-display">...</div>
+        <div id="status-text">Caricamento...</div>
+
+        <div class="btn-row">
+            <button id="btn-prev" onclick="prevStep()">INDIETRO</button>
+            <button id="btn-next" onclick="nextStep()">AVANTI ></button>
+        </div>
+        <button id="btn-replay" onclick="replay()">🔄 RIVEDI MOSSA</button>
+
+        <button id="btn-home" onclick="window.location.href='/'">🏠 Torna allo Scanner</button>
+    </div>
+    <div id="canvas-container">
+        <div id="lbl-up" class="face-label" style="top: 10%; left: 50%; transform: translateX(-50%);">UP</div>
+        <div id="lbl-left" class="face-label" style="top: 50%; left: 10%;">LEFT</div>
+        <div id="lbl-front" class="face-label" style="top: 50%; right: 10%;">FRONT</div>
+    </div>
+</div>
+
+<script>
+    window.onerror = function(msg) {
+        document.getElementById('fatal-error').style.display = 'flex';
+        document.getElementById('error-message').innerHTML = msg;
+    };
+
+    const HEX_PALETTE = {
+        'W': 0xFFFFFF, 'Y': 0xFFD500, 'R': 0xB90000,
+        'O': 0xFF5900, 'G': 0x009E60, 'B': 0x0045AD, 'U': 0x333333
+    };
+    
+    const COLOR_NAMES = {
+        'W': 'Bianco', 'Y': 'Giallo', 'R': 'Rosso',
+        'O': 'Arancio', 'G': 'Verde', 'B': 'Blu'
+    };
+
+    let CUBE_COLORS = {}; 
+    let scene, camera, renderer, cubeGroup;
+    let movesList = [];
+    let currentIndex = -1;
+    let isAnimating = false;
+    let allCubies = [];
+
+    function init() {
+        const params = new URLSearchParams(window.location.search);
+        const movesStr = params.get('moves');
+        
+        if (!movesStr) {
+            document.getElementById('status-text').innerText = "Errore: Nessuna mossa.";
+            document.getElementById('move-display').innerText = "ERR";
+            return; 
+        }
+        movesList = movesStr.trim().split(/\s+/);
+
+        const cU = params.get('u') || 'Y';
+        const cD = params.get('d') || 'W';
+        const cF = params.get('f') || 'B';
+        const cB = params.get('b') || 'G';
+        const cR = params.get('r') || 'R';
+        const cL = params.get('l') || 'O';
+
+        CUBE_COLORS = {
+            U: HEX_PALETTE[cU], D: HEX_PALETTE[cD],
+            F: HEX_PALETTE[cF], B: HEX_PALETTE[cB],
+            R: HEX_PALETTE[cR], L: HEX_PALETTE[cL],
+            K: 0x111111 
+        };
+
+        document.getElementById('lbl-up').innerText = `UP (${COLOR_NAMES[cU]})`;
+        document.getElementById('lbl-left').innerText = `LEFT (${COLOR_NAMES[cL]})`;
+        document.getElementById('lbl-front').innerText = `FRONT (${COLOR_NAMES[cF]})`;
+
+        const container = document.getElementById('canvas-container');
+        scene = new THREE.Scene();
+        
+        // CAMERA FISSA
+        camera = new THREE.PerspectiveCamera(35, container.clientWidth / container.clientHeight, 0.1, 100);
+        camera.position.set(-7, 6, 9); 
+        camera.lookAt(0, -0.5, 0);
+
+        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(container.clientWidth, container.clientHeight);
+        container.appendChild(renderer.domElement);
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+        const dl = new THREE.DirectionalLight(0xffffff, 1);
+        dl.position.set(-10, 20, 10);
+        scene.add(dl);
+        const dl2 = new THREE.DirectionalLight(0xffffff, 0.4);
+        dl2.position.set(10, -10, -10);
+        scene.add(dl2);
+
+        updateUI();
+        createSolvedCube();
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        });
+    }
+
+    function createSolvedCube() {
+        if(cubeGroup) scene.remove(cubeGroup);
+        cubeGroup = new THREE.Group();
+        allCubies = [];
+
+        const geo = new THREE.BoxGeometry(0.95, 0.95, 0.95);
+        
+        for(let x=-1; x<=1; x++) {
+            for(let y=-1; y<=1; y++) {
+                for(let z=-1; z<=1; z++) {
+                    const mats = [
+                        new THREE.MeshPhongMaterial({ color: x==1 ? CUBE_COLORS.R : CUBE_COLORS.K }), 
+                        new THREE.MeshPhongMaterial({ color: x==-1 ? CUBE_COLORS.L : CUBE_COLORS.K }), 
+                        new THREE.MeshPhongMaterial({ color: y==1 ? CUBE_COLORS.U : CUBE_COLORS.K }), 
+                        new THREE.MeshPhongMaterial({ color: y==-1 ? CUBE_COLORS.D : CUBE_COLORS.K }), 
+                        new THREE.MeshPhongMaterial({ color: z==1 ? CUBE_COLORS.F : CUBE_COLORS.K }), 
+                        new THREE.MeshPhongMaterial({ color: z==-1 ? CUBE_COLORS.B : CUBE_COLORS.K }), 
+                    ];
+                    const mesh = new THREE.Mesh(geo, mats);
+                    mesh.position.set(x*1.05, y*1.05, z*1.05); 
+                    mesh.userData = { startPos: new THREE.Vector3(x,y,z) };
+                    cubeGroup.add(mesh);
+                    allCubies.push(mesh);
+                }
+            }
+        }
+        scene.add(cubeGroup);
+    }
+
+    function nextStep() {
+        if(isAnimating) return;
+        let next = currentIndex + 1;
+        if(next >= movesList.length) return;
+        currentIndex = next;
+        performMove(movesList[currentIndex]);
+    }
+
+    function prevStep() {
+        if(isAnimating) return;
+        let next = currentIndex - 1;
+        if(next < -1) return;
+        currentIndex = next;
+        if(currentIndex === -1) {
+            updateUI();
+            createSolvedCube();
+        } else {
+            performMove(movesList[currentIndex]);
+        }
+    }
+
+    function replay() {
+        if(currentIndex >= 0 && !isAnimating) performMove(movesList[currentIndex]);
+    }
+
+    function performMove(moveStr) {
+        updateUI();
+        createSolvedCube(); 
+        setTimeout(() => { animateRotation(moveStr); }, 500);
+    }
+
+    function animateRotation(moveStr) {
+        isAnimating = true;
+        const face = moveStr[0];
+        const mod = moveStr.length > 1 ? moveStr[1] : "";
+        
+        let angle = -Math.PI/2; // Standard Orario (rispetto all'asse)
+        if(mod === "'") angle = Math.PI/2; 
+        if(mod === "2") angle = -Math.PI;
+
+        let axis = new THREE.Vector3();
+        let groupToAnim = new THREE.Group();
+        let cubiesToMove = [];
+        
+        // --- LOGICA ASSI CORRETTA ---
+        // Qui sta il fix: invertiamo l'asse per L, D, B
+        allCubies.forEach(c => {
+            let p = c.userData.startPos;
+            let sel = false;
+            
+            // Right: Asse X Positivo (1,0,0) -> OK
+            if(face==='R' && p.x===1) { axis.set(1,0,0); sel=true; }
+            
+            // Left: Asse X NEGATIVO (-1,0,0) -> FIX: Ora gira nel verso giusto per "Sinistra"
+            if(face==='L' && p.x===-1) { axis.set(-1,0,0); sel=true; }
+            
+            // Up: Asse Y Positivo (0,1,0) -> OK
+            if(face==='U' && p.y===1) { axis.set(0,1,0); sel=true; }
+            
+            // Down: Asse Y NEGATIVO (0,-1,0) -> FIX
+            if(face==='D' && p.y===-1) { axis.set(0,-1,0); sel=true; }
+            
+            // Front: Asse Z Positivo (0,0,1) -> OK
+            if(face==='F' && p.z===1) { axis.set(0,0,1); sel=true; }
+            
+            // Back: Asse Z NEGATIVO (0,0,-1) -> FIX
+            if(face==='B' && p.z===-1) { axis.set(0,0,-1); sel=true; }
+            
+            if(sel) cubiesToMove.push(c);
+        });
+
+        scene.add(groupToAnim);
+        cubiesToMove.forEach(c => groupToAnim.attach(c));
+
+        const start = { val: 0 };
+        if(window.TWEEN) {
+            new TWEEN.Tween(start)
+                .to({ val: angle }, 800)
+                .easing(TWEEN.Easing.Cubic.InOut)
+                .onUpdate(() => { groupToAnim.setRotationFromAxisAngle(axis, start.val); })
+                .onComplete(() => { isAnimating = false; })
+                .start();
+        } else {
+            groupToAnim.setRotationFromAxisAngle(axis, angle);
+            isAnimating = false;
+        }
+    }
+
+    function updateUI() {
+        const disp = document.getElementById('move-display');
+        const st = document.getElementById('status-text');
+        const count = document.getElementById('step-counter');
+
+        count.innerText = `Step ${currentIndex + 1} / ${movesList.length}`;
+
+        if(currentIndex < 0) {
+            disp.innerText = "START";
+            st.innerText = "Premi AVANTI";
+            document.getElementById('btn-prev').disabled = true;
+        } else {
+            document.getElementById('btn-prev').disabled = false;
+            const m = movesList[currentIndex];
+            disp.innerText = m;
+            
+            let desc = "Ruota faccia ";
+            if(m.includes("R")) desc += "DESTRA ";
+            if(m.includes("L")) desc += "SINISTRA ";
+            if(m.includes("U")) desc += "SOPRA ";
+            if(m.includes("D")) desc += "SOTTO ";
+            if(m.includes("F")) desc += "FRONTE ";
+            if(m.includes("B")) desc += "DIETRO ";
+            
+            if(m.includes("'")) desc += "ANTIORARIO";
+            else if(m.includes("2")) desc += "180°";
+            else desc += "ORARIO";
+            
+            st.innerText = desc;
+        }
+    }
+
+    function animate(time) {
+        requestAnimationFrame(animate);
+        if(window.TWEEN) TWEEN.update(time);
+        renderer.render(scene, camera);
+    }
+
+    init();
+</script>
+</body>
+</html>
